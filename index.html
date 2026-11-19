@@ -7,6 +7,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="리버시">
 <meta name="description" content="돌을 끼워 뒤집는 보드게임, 리버시(오델로).">
 <link rel="manifest" href="manifest.webmanifest">
@@ -46,7 +47,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-
 .cell .disc.fl{transform:scaleX(.04)}
 .cell .disc.pop{animation:pop .22s ease-out}
 @keyframes pop{from{transform:scale(.3);opacity:.4}to{transform:scale(1);opacity:1}}
-.cell .hint{position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(255,255,255,.55);pointer-events:none;animation:hp 1.6s ease-in-out infinite}
+.cell .hint{position:absolute;width:34%;height:34%;border-radius:50%;background:rgba(255,255,255,.7);pointer-events:none;animation:hp 1.6s ease-in-out infinite}
 @keyframes hp{50%{transform:scale(.7);opacity:.6}}
 .cell.last::after{content:"";position:absolute;width:14%;height:14%;border-radius:50%;background:#ef5b4d;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
 .cell.legal{cursor:pointer}
@@ -128,7 +129,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-
     <div class="veil" id="vLeave" hidden>
       <div class="box">
         <h2>나갈까요?</h2>
-        <p class="c">두던 판은 저장되어 있어서 다음에 이어서 둘 수 있습니다.</p>
+        <p class="c">두던 판은 저장되어 있어서 다음에 이어서 둘 수 있습니다.<br><span style="color:var(--dim)">나가시려면 뒤로 가기를 한 번 더 누르세요.</span></p>
         <button class="act" id="bStay">계속 두기</button>
       </div>
     </div>
@@ -284,10 +285,11 @@ var set=lsGet(KC);
 if(!set||set.v!==1)set={v:1,mode:'cpu',level:'normal',human:1,hint:true};
 var stats=lsGet(KS);
 if(!stats||stats.v!==1)stats={v:1,easy:{w:0,l:0,d:0},normal:{w:0,l:0,d:0},hard:{w:0,l:0,d:0}};
+if(!stats.two||typeof stats.two!=='object')stats.two={b:0,w:0,d:0};   // 옛 저장본(두 사람 전적 없음)과 호환
 function saveSet(){lsSet(KC,set);}
 
 var G=null;        // {b,turn,mode,level,human,last,hist[],over}
-var token=0,busy=false,leaveOpen=false;
+var token=0,busy=false;
 var cells=[],discs=[];
 
 /* ---------- 판 만들기 ---------- */
@@ -457,7 +459,8 @@ function finish(){
     p='내 돌 '+me+' : 컴퓨터 '+you+'\n('+LV[G.level]+') 전적 '+stats[G.level].w+'승 '+stats[G.level].l+'패 '+stats[G.level].d+'무';
   }else{
     t=a>b?'흑이 이겼습니다!':a<b?'백이 이겼습니다!':'비겼습니다';
-    p='흑 '+a+' : 백 '+b;
+    if(!G.rec){G.rec=true;stats.two[a>b?'b':a<b?'w':'d']++;lsSet(KS,stats);}
+    p='흑 '+a+' : 백 '+b+'\n둘이서 전적 흑 '+stats.two.b+'승 · 백 '+stats.two.w+'승 · '+stats.two.d+'무';
   }
   save();
   msg(t,true);
@@ -467,18 +470,22 @@ function finish(){
 /* ---------- 창 ---------- */
 var OV=['vSetup','vRules','vEnd','vLeave'];
 function anyOverlay(){return OV.some(function(id){return !$(id).hidden;});}
-function show(id){OV.forEach(function(x){$(x).hidden=x!==id;});leaveOpen=(id==='vLeave');}
-function closeAll(){OV.forEach(function(x){$(x).hidden=true;});leaveOpen=false;}
+function show(id){OV.forEach(function(x){$(x).hidden=x!==id;});}
+function closeAll(){OV.forEach(function(x){$(x).hidden=true;});}
+function leaveOpen(){return !$('vLeave').hidden;}   // 따로 상태값을 두지 않고 창이 실제로 떠 있는지로 판단
 function segSync(){
   [['sgMode','mode'],['sgLevel','level'],['sgHuman','human']].forEach(function(p){
     Array.prototype.forEach.call($(p[0]).children,function(b){b.classList.toggle('on',String(set[p[1]])===b.getAttribute('data-v'));});
   });
   var cpu=set.mode==='cpu';
-  $('gpLevel').hidden=!cpu;$('gpHuman').hidden=!cpu;$('stTable').hidden=!cpu;
+  $('gpLevel').hidden=!cpu;$('gpHuman').hidden=!cpu;
 }
 function statsHtml(){
   var h='<tr><th></th><th>승</th><th>패</th><th>무</th></tr>';
   ['easy','normal','hard'].forEach(function(k){var s=stats[k];h+='<tr><td>'+LV[k]+'</td><td>'+s.w+'</td><td>'+s.l+'</td><td>'+s.d+'</td></tr>';});
+  if(set.mode==='two'){
+    h='<tr><th></th><th>흑 승</th><th>백 승</th><th>무</th></tr><tr><td>둘이서</td><td>'+stats.two.b+'</td><td>'+stats.two.w+'</td><td>'+stats.two.d+'</td></tr>';
+  }
   $('stTable').innerHTML=h;
 }
 function openSetup(fromGame){
@@ -490,7 +497,7 @@ function openSetup(fromGame){
 [['sgMode','mode'],['sgLevel','level'],['sgHuman','human']].forEach(function(p){
   $(p[0]).addEventListener('click',function(e){
     var b=e.target.closest('button');if(!b)return;
-    var v=b.getAttribute('data-v');set[p[1]]=p[1]==='human'?+v:v;saveSet();segSync();
+    var v=b.getAttribute('data-v');set[p[1]]=p[1]==='human'?+v:v;saveSet();segSync();statsHtml();
   });
 });
 function startNew(){
@@ -515,10 +522,10 @@ function pauseSave(){save();}
 document.addEventListener('visibilitychange',function(){if(document.hidden)pauseSave();});
 window.addEventListener('pagehide',pauseSave);
 window.__gameBack=function(){
-  if(leaveOpen){return false;}                       // 확인창이 떠 있는데 또 뒤로 → 나가기
+  if(leaveOpen()){return false;}                     // 확인창이 떠 있는데 또 뒤로 → 앱이 닫음(판은 저장되어 있음)
   if(!$('vSetup').hidden&&G){closeAll();return true;}
   if(!$('vRules').hidden||!$('vEnd').hidden){closeAll();return true;}
-  if(G&&!G.over&&G.hist.length>0){show('vLeave');leaveOpen=true;return true;}
+  if(G&&!G.over&&G.hist.length>0){show('vLeave');return true;}
   return false;
 };
 
